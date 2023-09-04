@@ -7,6 +7,7 @@ import { OutputPass } from "./pass/OutputPass.js"
 
 let camera, scene, renderer, composer, crystalMesh, clock, playerMesh, velocity, damping
 const keysPressed = new Set()
+const pixelSize = 1
 
 init()
 animate()
@@ -15,8 +16,9 @@ function init() {
     const aspectRatio = window.innerWidth / window.innerHeight
 
     camera = new THREE.OrthographicCamera(-aspectRatio, aspectRatio, 1, -1, 0.1, 10)
-    camera.position.y = 2 * Math.tan(Math.PI / 6)
+    camera.position.y = 2.5 * Math.tan(Math.PI / 6)
     camera.position.z = 2
+    camera.lookAt(0, 0, 0)
 
     scene = new THREE.Scene()
     scene.background = new THREE.Color(0x151729)
@@ -30,7 +32,7 @@ function init() {
     document.body.appendChild(renderer.domElement)
 
     composer = new EffectComposer(renderer)
-    const renderPixelatedPass = new RenderPixelatedPass(4, scene, camera)
+    const renderPixelatedPass = new RenderPixelatedPass(pixelSize, scene, camera)
     composer.addPass(renderPixelatedPass)
 
     const outputPass = new OutputPass()
@@ -39,6 +41,7 @@ function init() {
     window.addEventListener("resize", onWindowResize)
 
     const controls = new OrbitControls(camera, renderer.domElement)
+    controls.enabled = false // Enable or disable manual camera movements
     controls.maxZoom = 2
 
     // textures
@@ -107,8 +110,8 @@ function init() {
     )
     playerMesh.receiveShadow = true
     playerMesh.castShadow = true
-    playerMesh.position.x = 0.4
-    playerMesh.position.z = 0.3
+    playerMesh.position.x = 0
+    playerMesh.position.z = 0
     playerMesh.position.y = 0.1
     scene.add(playerMesh)
 
@@ -176,6 +179,9 @@ function animate() {
 
     // Update the sphere position
     playerMesh.position.add(velocity)
+
+    // Update the camera position
+    camera.position.add(velocity)
 
     // Apply damping (to slow down over time)
     velocity.multiplyScalar(damping)
