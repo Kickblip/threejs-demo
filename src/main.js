@@ -1,5 +1,5 @@
 import * as THREE from "three"
-
+import { ColladaLoader } from "/node_modules/three/examples/jsm/loaders/ColladaLoader.js"
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js"
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js"
 import { RenderPixelatedPass } from "./pass/RenderPixelatedPass.js"
@@ -7,7 +7,9 @@ import { OutputPass } from "./pass/OutputPass.js"
 
 let camera, scene, renderer, composer, crystalMesh, clock, playerMesh, velocity, damping
 const keysPressed = new Set()
+const loader = new ColladaLoader()
 const pixelSize = 1
+const acceleration = 0.013 // Acceleration of the player
 
 init()
 animate()
@@ -67,7 +69,6 @@ function init() {
         return mesh
     }
 
-    addBox(0.4, 0, 0, Math.PI / 4)
     addBox(0.5, -0.5, -0.5, Math.PI / 4)
 
     const planeSideLength = 2
@@ -115,6 +116,12 @@ function init() {
     playerMesh.position.y = 0.1
     scene.add(playerMesh)
 
+    loader.load("/treeMeshes/Tree-Type4-05.dae", (collada) => {
+        const model = collada.scene
+        model.position.set(0, 0, 0)
+        scene.add(model)
+    })
+
     // lights
 
     scene.add(new THREE.AmbientLight(0x757f8e, 3))
@@ -156,7 +163,6 @@ function animate() {
     const rendererSize = renderer.getSize(new THREE.Vector2())
     const aspectRatio = rendererSize.x / rendererSize.y
 
-    const acceleration = 0.01
     if (keysPressed.size === 0) {
         velocity.set(0, 0, 0) // Reset velocity when no keys are pressed
     } else {
