@@ -1,40 +1,52 @@
 import {
     WebGLRenderTarget,
-    RGBAFormat,
     MeshNormalMaterial,
     ShaderMaterial,
     Vector2,
     Vector4,
     DepthTexture,
     NearestFilter,
+    HalfFloatType,
 } from "three"
 import { Pass, FullScreenQuad } from "./Pass.js"
 
 class RenderPixelatedPass extends Pass {
-    constructor(resolution, pixelSize, scene, camera, options = {}) {
+    constructor(pixelSize, scene, camera, options = {}) {
         super()
 
         this.pixelSize = pixelSize
         this.resolution = new Vector2()
         this.renderResolution = new Vector2()
-        this.setSize(resolution.x, resolution.y)
 
-        this.fsQuad = new FullScreenQuad(this.material())
+        this.pixelatedMaterial = this.createPixelatedMaterial()
+        this.normalMaterial = new MeshNormalMaterial()
+
+        this.fsQuad = new FullScreenQuad(this.pixelatedMaterial)
         this.scene = scene
         this.camera = camera
 
-        this.normalEdgeStrength = options.normalEdgeStrength ?? 0.3
-        this.depthEdgeStrength = options.depthEdgeStrength ?? 0.15
+        this.normalEdgeStrength = options.normalEdgeStrength || 0.2
+        this.depthEdgeStrength = options.depthEdgeStrength || 0.2
 
-        this.rgbRenderTarget = pixelRenderTarget(this.renderResolution, RGBAFormat, true)
-        this.normalRenderTarget = pixelRenderTarget(this.renderResolution, RGBAFormat, false)
+        this.beautyRenderTarget = new WebGLRenderTarget()
+        this.beautyRenderTarget.texture.minFilter = NearestFilter
+        this.beautyRenderTarget.texture.magFilter = NearestFilter
+        this.beautyRenderTarget.texture.type = HalfFloatType
+        this.beautyRenderTarget.depthTexture = new DepthTexture()
 
-        this.normalMaterial = new MeshNormalMaterial()
+        this.normalRenderTarget = new WebGLRenderTarget()
+        this.normalRenderTarget.texture.minFilter = NearestFilter
+        this.normalRenderTarget.texture.magFilter = NearestFilter
+        this.normalRenderTarget.texture.type = HalfFloatType
     }
 
     dispose() {
-        this.rgbRenderTarget.dispose()
+        this.beautyRenderTarget.dispose()
         this.normalRenderTarget.dispose()
+
+        this.pixelatedMaterial.dispose()
+        this.normalMaterial.dispose()
+
         this.fsQuad.dispose()
     }
 
@@ -42,9 +54,9 @@ class RenderPixelatedPass extends Pass {
         this.resolution.set(width, height)
         this.renderResolution.set((width / this.pixelSize) | 0, (height / this.pixelSize) | 0)
         const { x, y } = this.renderResolution
-        this.rgbRenderTarget?.setSize(x, y)
-        this.normalRenderTarget?.setSize(x, y)
-        this.fsQuad?.material.uniforms.resolution.value.set(x, y, 1 / x, 1 / y)
+        this.beautyRenderTarget.setSize(x, y)
+        this.normalRenderTarget.setSize(x, y)
+        this.fsQuad.material.uniforms.resolution.value.set(x, y, 1 / x, 1 / y)
     }
 
     setPixelSize(pixelSize) {
@@ -57,7 +69,7 @@ class RenderPixelatedPass extends Pass {
         uniforms.normalEdgeStrength.value = this.normalEdgeStrength
         uniforms.depthEdgeStrength.value = this.depthEdgeStrength
 
-        renderer.setRenderTarget(this.rgbRenderTarget)
+        renderer.setRenderTarget(this.beautyRenderTarget)
         renderer.render(this.scene, this.camera)
 
         const overrideMaterial_old = this.scene.overrideMaterial
@@ -66,8 +78,8 @@ class RenderPixelatedPass extends Pass {
         renderer.render(this.scene, this.camera)
         this.scene.overrideMaterial = overrideMaterial_old
 
-        uniforms.tDiffuse.value = this.rgbRenderTarget.texture
-        uniforms.tDepth.value = this.rgbRenderTarget.depthTexture
+        uniforms.tDiffuse.value = this.beautyRenderTarget.texture
+        uniforms.tDepth.value = this.beautyRenderTarget.depthTexture
         uniforms.tNormal.value = this.normalRenderTarget.texture
 
         if (this.renderToScreen) {
@@ -81,7 +93,7 @@ class RenderPixelatedPass extends Pass {
         this.fsQuad.render(renderer)
     }
 
-    material() {
+    createPixelatedMaterial() {
         return new ShaderMaterial({
             uniforms: {
                 tDiffuse: { value: null },
@@ -98,7 +110,7 @@ class RenderPixelatedPass extends Pass {
                 normalEdgeStrength: { value: 0 },
                 depthEdgeStrength: { value: 0 },
             },
-            vertexShader: `
+            vertexShader: /* glsl */ `
 				varying vec2 vUv;
 
 				void main() {
@@ -107,8 +119,8 @@ class RenderPixelatedPass extends Pass {
 					gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
 
 				}
-				`,
-            fragmentShader: `
+			`,
+            fragmentShader: /* glsl */ `
 				uniform sampler2D tDiffuse;
 				uniform sampler2D tDepth;
 				uniform sampler2D tNormal;
@@ -144,12 +156,12 @@ class RenderPixelatedPass extends Pass {
 
 					float depthDiff = getDepth(x, y) - depth;
 					vec3 neighborNormal = getNormal(x, y);
-					
+
 					// Edge pixels should yield to faces who's normals are closer to the bias normal.
 					vec3 normalEdgeBias = vec3(1., 1., 1.); // This should probably be a parameter.
 					float normalDiff = dot(normal - neighborNormal, normalEdgeBias);
 					float normalIndicator = clamp(smoothstep(-.01, .01, normalDiff), 0.0, 1.0);
-					
+
 					// Only the shallower pixel should detect the normal edge.
 					float depthIndicator = clamp(sign(depthDiff * .25 + .0025), 0.0, 1.0);
 
@@ -158,7 +170,7 @@ class RenderPixelatedPass extends Pass {
 				}
 
 				float normalEdgeIndicator(float depth, vec3 normal) {
-					
+
 					float indicator = 0.0;
 
 					indicator += neighborNormalEdgeIndicator(0, -1, depth, normal);
@@ -185,11 +197,11 @@ class RenderPixelatedPass extends Pass {
 					}
 
 					float dei = 0.0;
-					if (depthEdgeStrength > 0.0) 
+					if (depthEdgeStrength > 0.0)
 						dei = depthEdgeIndicator(depth, normal);
 
-					float nei = 0.0; 
-					if (normalEdgeStrength > 0.0) 
+					float nei = 0.0;
+					if (normalEdgeStrength > 0.0)
 						nei = normalEdgeIndicator(depth, normal);
 
 					float Strength = dei > 0.0 ? (1.0 - depthEdgeStrength * dei) : (1.0 + normalEdgeStrength * nei);
@@ -197,28 +209,9 @@ class RenderPixelatedPass extends Pass {
 					gl_FragColor = texel * Strength;
 
 				}
-				`,
+			`,
         })
     }
-}
-
-function pixelRenderTarget(resolution, pixelFormat, useDepthTexture) {
-    const renderTarget = new WebGLRenderTarget(
-        resolution.x,
-        resolution.y,
-        !useDepthTexture
-            ? undefined
-            : {
-                  depthTexture: new DepthTexture(resolution.x, resolution.y),
-                  depthBuffer: true,
-              },
-    )
-    renderTarget.texture.format = pixelFormat
-    renderTarget.texture.minFilter = NearestFilter
-    renderTarget.texture.magFilter = NearestFilter
-    renderTarget.texture.generateMipmaps = false
-    renderTarget.stencilBuffer = false
-    return renderTarget
 }
 
 export { RenderPixelatedPass }

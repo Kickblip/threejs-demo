@@ -1,67 +1,60 @@
 import * as THREE from "three"
-import { Vector2 } from "three"
+
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js"
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js"
-import { RenderPixelatedPass } from "./RenderPixelatedPass.js"
+import { RenderPixelatedPass } from "./pass/RenderPixelatedPass.js"
+import { OutputPass } from "./pass/OutputPass.js"
 
-let screenResolution, camera, scene, renderer, composer, renderPixelatedPass, controls, crystalMesh, playerMesh, velocity, damping
+let camera, scene, renderer, composer, crystalMesh, clock, playerMesh, velocity, damping
 const keysPressed = new Set()
 
 init()
 animate()
 
-function onWindowResize() {
-    screenResolution.set(window.innerWidth, window.innerHeight)
-    const aspectRatio = screenResolution.x / screenResolution.y
-    camera.left = -aspectRatio
-    camera.right = aspectRatio
-    camera.updateProjectionMatrix()
-    renderer.setSize(screenResolution.x, screenResolution.y)
-    renderPixelatedPass.setSize(screenResolution.x, screenResolution.y)
-}
-
 function init() {
-    screenResolution = new Vector2(window.innerWidth, window.innerHeight)
-    const aspectRatio = screenResolution.x / screenResolution.y
+    const aspectRatio = window.innerWidth / window.innerHeight
 
     camera = new THREE.OrthographicCamera(-aspectRatio, aspectRatio, 1, -1, 0.1, 10)
+    camera.position.y = 2 * Math.tan(Math.PI / 6)
+    camera.position.z = 2
+
     scene = new THREE.Scene()
     scene.background = new THREE.Color(0x151729)
 
-    renderer = new THREE.WebGLRenderer({ antialias: false })
+    clock = new THREE.Clock()
+
+    renderer = new THREE.WebGLRenderer()
     renderer.shadowMap.enabled = true
-    renderer.setSize(screenResolution.x, screenResolution.y)
+    //renderer.setPixelRatio( window.devicePixelRatio );
+    renderer.setSize(window.innerWidth, window.innerHeight)
     document.body.appendChild(renderer.domElement)
 
     composer = new EffectComposer(renderer)
-    renderPixelatedPass = new RenderPixelatedPass(
-        screenResolution,
-        3, // pixelSize
-        scene,
-        camera,
-    )
+    const renderPixelatedPass = new RenderPixelatedPass(4, scene, camera)
     composer.addPass(renderPixelatedPass)
+
+    const outputPass = new OutputPass()
+    composer.addPass(outputPass)
 
     window.addEventListener("resize", onWindowResize)
 
-    controls = new OrbitControls(camera, renderer.domElement)
-    controls.enabled = true // Disable manual camera movements
-    controls.target.set(0, 0, 0)
-    camera.position.z = 2
-    camera.position.y = 2 * Math.tan(Math.PI / 6)
-    controls.update()
-    // controls.minPolarAngle = controls.maxPolarAngle = controls.getPolarAngle();
+    const controls = new OrbitControls(camera, renderer.domElement)
+    controls.maxZoom = 2
 
-    const texLoader = new THREE.TextureLoader()
-    const tex_checker = pixelTexture(texLoader.load("/checker.png"))
-    const tex_checker2 = pixelTexture(texLoader.load("/checker.png"))
-    tex_checker.repeat.set(3, 3)
-    tex_checker2.repeat.set(1.5, 1.5)
+    // textures
 
-    // Setup geometry
-    const boxMaterial = new THREE.MeshPhongMaterial({ map: tex_checker2 })
+    const loader = new THREE.TextureLoader()
+    const texChecker = pixelTexture(loader.load("/checker.png"))
+    const texChecker2 = pixelTexture(loader.load("/checker.png"))
+    texChecker.repeat.set(3, 3)
+    texChecker2.repeat.set(1.5, 1.5)
+
+    // meshes
+
+    const boxMaterial = new THREE.MeshPhongMaterial({ map: texChecker2 })
+
     function addBox(boxSideLength, x, z, rotation) {
-        let mesh = new THREE.Mesh(new THREE.BoxGeometry(boxSideLength, boxSideLength, boxSideLength), boxMaterial)
+        const mesh = new THREE.Mesh(new THREE.BoxGeometry(boxSideLength, boxSideLength, boxSideLength), boxMaterial)
         mesh.castShadow = true
         mesh.receiveShadow = true
         mesh.rotation.y = rotation
@@ -70,26 +63,26 @@ function init() {
         scene.add(mesh)
         return mesh
     }
+
     addBox(0.4, 0, 0, Math.PI / 4)
     addBox(0.5, -0.5, -0.5, Math.PI / 4)
-    addBox(0.3, 0.6, 0.6, Math.PI / 4)
 
     const planeSideLength = 2
     const planeMesh = new THREE.Mesh(
         new THREE.PlaneGeometry(planeSideLength, planeSideLength),
-        new THREE.MeshPhongMaterial({ map: tex_checker }),
+        new THREE.MeshPhongMaterial({ map: texChecker }),
     )
     planeMesh.receiveShadow = true
     planeMesh.rotation.x = -Math.PI / 2
     scene.add(planeMesh)
 
     const radius = 0.2
-    const crystalGeometry = new THREE.IcosahedronGeometry(radius)
+    const geometry = new THREE.IcosahedronGeometry(radius)
     crystalMesh = new THREE.Mesh(
-        crystalGeometry,
+        geometry,
         new THREE.MeshPhongMaterial({
-            color: 0x2379cf,
-            emissive: 0x143542,
+            color: 0x68b7e9,
+            emissive: 0x4f7e8b,
             shininess: 10,
             specular: 0xffffff,
         }),
@@ -119,16 +112,17 @@ function init() {
     playerMesh.position.y = 0.1
     scene.add(playerMesh)
 
-    // Setup lights
-    scene.add(new THREE.AmbientLight(0x2d3645, 1.5))
+    // lights
 
-    const directionalLight = new THREE.DirectionalLight(0xfffc9c, 0.5)
+    scene.add(new THREE.AmbientLight(0x757f8e, 3))
+
+    const directionalLight = new THREE.DirectionalLight(0xfffecd, 1.5)
     directionalLight.position.set(100, 100, 100)
     directionalLight.castShadow = true
     directionalLight.shadow.mapSize.set(2048, 2048)
     scene.add(directionalLight)
 
-    const spotLight = new THREE.SpotLight(0xff8800, 1.5, 10, Math.PI / 16, 0.02, 2)
+    const spotLight = new THREE.SpotLight(0xffc100, 10, 10, Math.PI / 16, 0.02, 2)
     spotLight.position.set(2, 2, 0)
     const target = spotLight.target
     scene.add(target)
@@ -137,12 +131,27 @@ function init() {
     scene.add(spotLight)
 }
 
+function onWindowResize() {
+    const aspectRatio = window.innerWidth / window.innerHeight
+    camera.left = -aspectRatio
+    camera.right = aspectRatio
+    camera.updateProjectionMatrix()
+
+    renderer.setSize(window.innerWidth, window.innerHeight)
+    composer.setSize(window.innerWidth, window.innerHeight)
+}
+
 function animate() {
     requestAnimationFrame(animate)
-    const t = performance.now() / 1000
+
+    const t = clock.getElapsedTime()
+
     crystalMesh.material.emissiveIntensity = Math.sin(t * 3) * 0.5 + 0.5
     crystalMesh.position.y = 0.7 + Math.sin(t * 2) * 0.05
     crystalMesh.rotation.y = stopGoEased(t, 2, 4) * 2 * Math.PI
+
+    const rendererSize = renderer.getSize(new THREE.Vector2())
+    const aspectRatio = rendererSize.x / rendererSize.y
 
     const acceleration = 0.01
     if (keysPressed.size === 0) {
@@ -171,8 +180,7 @@ function animate() {
     // Apply damping (to slow down over time)
     velocity.multiplyScalar(damping)
 
-    // composer.render()
-    renderer.render(scene, camera)
+    composer.render()
 }
 
 // Handle Keyboard Input
@@ -192,6 +200,7 @@ function pixelTexture(texture) {
     texture.generateMipmaps = false
     texture.wrapS = THREE.RepeatWrapping
     texture.wrapT = THREE.RepeatWrapping
+    texture.colorSpace = THREE.SRGBColorSpace
     return texture
 }
 
@@ -199,15 +208,11 @@ function easeInOutCubic(x) {
     return x ** 2 * 3 - x ** 3 * 2
 }
 
-function clamp(x, min, max) {
-    return Math.min(max, Math.max(min, x))
-}
-
 function linearStep(x, edge0, edge1) {
     const w = edge1 - edge0
     const m = 1 / w
     const y0 = -m * edge0
-    return clamp(y0 + m * x, 0, 1)
+    return THREE.MathUtils.clamp(y0 + m * x, 0, 1)
 }
 
 function stopGoEased(x, downtime, period) {
@@ -215,4 +220,37 @@ function stopGoEased(x, downtime, period) {
     const tween = x - cycle * period
     const linStep = easeInOutCubic(linearStep(tween, downtime, period))
     return cycle + linStep
+}
+
+function pixelAlignFrustum(camera, aspectRatio, pixelsPerScreenWidth, pixelsPerScreenHeight) {
+    // 0. Get Pixel Grid Units
+    const worldScreenWidth = (camera.right - camera.left) / camera.zoom
+    const worldScreenHeight = (camera.top - camera.bottom) / camera.zoom
+    const pixelWidth = worldScreenWidth / pixelsPerScreenWidth
+    const pixelHeight = worldScreenHeight / pixelsPerScreenHeight
+
+    // 1. Project the current camera position along its local rotation bases
+    const camPos = new THREE.Vector3()
+    camera.getWorldPosition(camPos)
+    const camRot = new THREE.Quaternion()
+    camera.getWorldQuaternion(camRot)
+    const camRight = new THREE.Vector3(1.0, 0.0, 0.0).applyQuaternion(camRot)
+    const camUp = new THREE.Vector3(0.0, 1.0, 0.0).applyQuaternion(camRot)
+    const camPosRight = camPos.dot(camRight)
+    const camPosUp = camPos.dot(camUp)
+
+    // 2. Find how far along its position is along these bases in pixel units
+    const camPosRightPx = camPosRight / pixelWidth
+    const camPosUpPx = camPosUp / pixelHeight
+
+    // 3. Find the fractional pixel units and convert to world units
+    const fractX = camPosRightPx - Math.round(camPosRightPx)
+    const fractY = camPosUpPx - Math.round(camPosUpPx)
+
+    // 4. Add fractional world units to the left/right top/bottom to align with the pixel grid
+    camera.left = -aspectRatio - fractX * pixelWidth
+    camera.right = aspectRatio - fractX * pixelWidth
+    camera.top = 1.0 - fractY * pixelHeight
+    camera.bottom = -1.0 - fractY * pixelHeight
+    camera.updateProjectionMatrix()
 }

@@ -2,6 +2,8 @@ import { BufferGeometry, Float32BufferAttribute, OrthographicCamera, Mesh } from
 
 class Pass {
     constructor() {
+        this.isPass = true
+
         // if set to true, the pass is processed by the composer
         this.enabled = true
 
@@ -20,6 +22,8 @@ class Pass {
     render(/* renderer, writeBuffer, readBuffer, deltaTime, maskActive */) {
         console.error("THREE.Pass: .render() must be implemented in derived pass.")
     }
+
+    dispose() {}
 }
 
 // Helper for passes that need to fill the viewport with a single quad.
