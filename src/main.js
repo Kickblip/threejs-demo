@@ -7,9 +7,9 @@ import { OutputPass } from "./pass/OutputPass.js"
 
 let camera, scene, renderer, composer, crystalMesh, clock, playerMesh, velocity, damping
 const keysPressed = new Set()
-const loader = new ColladaLoader()
-const pixelSize = 1
+const pixelSize = 5
 const acceleration = 0.013 // Acceleration of the player
+const colladaLoader = new ColladaLoader()
 
 init()
 animate()
@@ -43,7 +43,7 @@ function init() {
     window.addEventListener("resize", onWindowResize)
 
     const controls = new OrbitControls(camera, renderer.domElement)
-    controls.enabled = false // Enable or disable manual camera movements
+    controls.enabled = true // Enable or disable manual camera movements
     controls.maxZoom = 2
 
     // textures
@@ -51,6 +51,10 @@ function init() {
     const loader = new THREE.TextureLoader()
     const texChecker = pixelTexture(loader.load("/checker.png"))
     const texChecker2 = pixelTexture(loader.load("/checker.png"))
+    const treeTexture0 = loader.load("/treeMeshes/Colorsheet-Tree-Normal.png")
+    const treeTexture1 = loader.load("/treeMeshes/Colorsheet-Tree-Dry.png")
+    const treeTexture2 = loader.load("/treeMeshes/Colorsheet-Tree-Cold.png")
+    const treeTexture3 = loader.load("/treeMeshes/Colorsheet-Tree-Fall.png")
     texChecker.repeat.set(3, 3)
     texChecker2.repeat.set(1.5, 1.5)
 
@@ -68,8 +72,6 @@ function init() {
         scene.add(mesh)
         return mesh
     }
-
-    addBox(0.5, -0.5, -0.5, Math.PI / 4)
 
     const planeSideLength = 2
     const planeMesh = new THREE.Mesh(
@@ -116,9 +118,22 @@ function init() {
     playerMesh.position.y = 0.1
     scene.add(playerMesh)
 
-    loader.load("/treeMeshes/Tree-Type4-05.dae", (collada) => {
+    colladaLoader.load("/treeMeshes/Tree-Type4-05.dae", (collada) => {
         const model = collada.scene
-        model.position.set(0, 0, 0)
+        model.position.set(1, 0, 0)
+        model.scale.set(0.2, 0.2, 0.2)
+
+        // Traverse the model to find all mesh objects
+        model.traverse((child) => {
+            if (child instanceof THREE.Mesh) {
+                // Create a new MeshPhongMaterial with the loaded texture
+                const newMaterial = new THREE.MeshPhongMaterial({ map: texChecker })
+
+                // Apply the material to the mesh
+                child.material = newMaterial
+            }
+        })
+
         scene.add(model)
     })
 
